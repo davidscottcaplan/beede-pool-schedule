@@ -1,6 +1,7 @@
 import base64
 import os
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from flask import Flask, render_template, request
 
@@ -44,13 +45,13 @@ def index():
 
 @app.route("/today")
 def today_view():
-    today = date.today()
+    today = datetime.now(ZoneInfo("America/New_York")).date()
     week_start = _week_start(today)
 
     schedule   = get_week_schedule(week_start)
     day_sched  = schedule.get(today.isoformat(), {})
 
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("America/New_York"))
     now_minutes = now.hour * 60 + now.minute
 
     img_bytes = create_day_image(day_sched, today, now_minutes=now_minutes)
