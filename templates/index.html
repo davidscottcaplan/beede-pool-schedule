@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Beede Pool – {{ week_start.strftime('%b %-d') }}–{{ week_end.strftime('%-d, %Y') }}</title>
+  <title>{% if view == 'day' %}Beede Pool – Today {{ day_date.strftime('%b %-d') }}{% else %}Beede Pool – {{ week_start.strftime('%b %-d') }}–{{ week_end.strftime('%-d, %Y') }}{% endif %}</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -47,6 +47,8 @@
     .btn:hover { background: #2c5282; }
     .btn-today { background: #276749; }
     .btn-today:hover { background: #22543d; }
+    .btn-day { background: #6b46c1; }
+    .btn-day:hover { background: #553c9a; }
 
     .week-label {
       flex: 1;
@@ -99,20 +101,26 @@
 </header>
 
 <nav>
-  <a class="btn" href="/?week={{ prev_week }}">← Previous</a>
-  {% if week_start.isoformat() != today_week %}
-  <a class="btn btn-today" href="/?week={{ today_week }}">Today</a>
+  {% if view == 'day' %}
+    <a class="btn" href="/?week={{ today_week }}">← Week View</a>
+    <span class="week-label">Today — {{ day_date.strftime('%A, %B %-d, %Y') }}</span>
+  {% else %}
+    <a class="btn" href="/?week={{ prev_week }}">← Previous</a>
+    {% if week_start.isoformat() != today_week %}
+    <a class="btn btn-today" href="/?week={{ today_week }}">This Week</a>
+    {% endif %}
+    <span class="week-label">
+      Week of {{ week_start.strftime('%B %-d') }}–{{ week_end.strftime('%-d, %Y') }}
+    </span>
+    <a class="btn" href="/?week={{ next_week }}">Next →</a>
+    <a class="btn btn-day" href="/today">Today's View</a>
   {% endif %}
-  <span class="week-label">
-    Week of {{ week_start.strftime('%B %-d') }}–{{ week_end.strftime('%-d, %Y') }}
-  </span>
-  <a class="btn" href="/?week={{ next_week }}">Next →</a>
 </nav>
 
 <main>
   <div class="chart-wrapper">
     <img src="data:image/png;base64,{{ img_b64 }}"
-         alt="Beede Pool Lane Availability – week of {{ week_start.strftime('%B %-d, %Y') }}">
+         alt="{% if view == 'day' %}Beede Pool Lane Availability – {{ day_date.strftime('%B %-d, %Y') }}{% else %}Beede Pool Lane Availability – week of {{ week_start.strftime('%B %-d, %Y') }}{% endif %}">
   </div>
 
   <p class="note">
