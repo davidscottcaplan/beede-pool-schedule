@@ -85,7 +85,7 @@ def _fetch_area_week(area_id: int, week_start: date) -> dict[str, list]:
             continue
 
         events = []
-        for row in table.find_all("tr", class_="row"):
+        for row in table.find_all("tr", class_=lambda c: c and ("row" in c or "alt" in c)):
             tds = row.find_all("td")
             if len(tds) < 2:
                 continue
