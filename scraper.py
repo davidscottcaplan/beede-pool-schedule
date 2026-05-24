@@ -7,6 +7,8 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
+from config import POOL_HOURS
+
 FACILITY_ID = 14698
 BASE_URL = "https://concordrec.myrec.com/info/calendar/mobile.aspx"
 
@@ -104,9 +106,47 @@ def _fetch_area_week(area_id: int, week_start: date) -> dict[str, list]:
     return result
 
 
-def get_week_schedule(week_start: date) -> dict:
+def _fetch_facility_week(week_start: date) -> set[str]:
     """
-    Return {date_iso: {'lane_1': [events], ..., 'lane_8': [events]}}
+    Fetch the facility-level calendar (no AreaID) and return the set of
+    date strings that have at least one event.  Used to detect closures:
+    a normally-open weekday absent from this set means the pool is closed.
+    """
+    week_end = week_start + timedelta(days=6)
+    url = (
+        f"{BASE_URL}?FacilityID={FACILITY_ID}"
+        f"&StartDate={week_start.strftime('%m/%d/%Y')}"
+    )
+    try:
+        resp = _SESSION.get(url, timeout=15)
+        resp.raise_for_status()
+    except Exception:
+        return set()   # on error, assume nothing is closed (fail open)
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    dates_with_events: set[str] = set()
+    for table in soup.find_all("table", class_="styled"):
+        title_row = table.find("tr", class_="trTitle")
+        if not title_row:
+            continue
+        try:
+            page_date = datetime.strptime(
+                title_row.get_text(" ", strip=True).strip(), "%A %B %d, %Y"
+            ).date()
+        except ValueError:
+            continue
+        if not (week_start <= page_date <= week_end):
+            continue
+        if table.find("tr", class_=lambda c: c and ("row" in c or "alt" in c)):
+            dates_with_events.add(page_date.isoformat())
+    return dates_with_events
+
+
+def get_week_schedule(week_start: date) -> tuple[dict, set]:
+    """
+    Return (schedule, closed_dates) where:
+      schedule    — {date_iso: {'lane_1': [events], ..., 'lane_8': [events]}}
+      closed_dates — set of date_iso strings where the pool is closed all day
     Results are cached for one hour.
     """
     cache_key = week_start.isoformat()
@@ -150,5 +190,14 @@ def get_week_schedule(week_start: date) -> dict:
             except Exception as exc:
                 print(f"[scraper] area {futures[future]} failed: {exc}")
 
-    _cache[cache_key] = (schedule, time.time())
-    return schedule
+    # Detect closure days: normally-open weekdays absent from facility calendar
+    facility_days = _fetch_facility_week(week_start)
+    closed_dates: set[str] = set()
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        if POOL_HOURS.get(d.weekday()) is not None and d.isoformat() not in facility_days:
+            closed_dates.add(d.isoformat())
+
+    result = (schedule, closed_dates)
+    _cache[cache_key] = (result, time.time())
+    return result

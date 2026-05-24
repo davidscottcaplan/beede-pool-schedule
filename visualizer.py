@@ -20,16 +20,21 @@ N_SLOTS = (DISPLAY_END_MIN - DISPLAY_START_MIN) // SLOT_MINUTES  # 32 half-hour 
 N_LANES = 8
 
 
-def _build_day_grid(day_schedule: dict, weekday: int) -> np.ndarray:
+def _build_day_grid(day_schedule: dict, day_date: date,
+                    closed_dates: set) -> np.ndarray:
     """
     Return (N_SLOTS, N_LANES) int array:  0=available  1=blocked  2=closed
     day_schedule: {'lane_1': [events], ..., 'lane_8': [events]}
     """
     grid = np.zeros((N_SLOTS, N_LANES), dtype=int)
 
-    pool_hours = POOL_HOURS.get(weekday)
+    if day_date.isoformat() in closed_dates:
+        grid[:] = 2          # holiday / maintenance closure
+        return grid
+
+    pool_hours = POOL_HOURS.get(day_date.weekday())
     if pool_hours is None:
-        grid[:] = 2          # pool closed all day
+        grid[:] = 2          # pool closed all day (regular schedule)
         return grid
 
     pool_open, pool_close = pool_hours
@@ -49,13 +54,14 @@ def _build_day_grid(day_schedule: dict, weekday: int) -> np.ndarray:
             s0 = (ev["start"] - DISPLAY_START_MIN) // SLOT_MINUTES
             s1 = math.ceil((ev["end"] - DISPLAY_START_MIN) / SLOT_MINUTES)
             for s in range(max(0, s0), min(N_SLOTS, s1)):
-                if grid[s, col] != 2:          # don't paint over closed
+                if grid[s, col] != 2:
                     grid[s, col] = 1
 
     return grid
 
 
-def create_weekly_image(schedule: dict, week_start: date) -> bytes:
+def create_weekly_image(schedule: dict, week_start: date,
+                        closed_dates: set = frozenset()) -> bytes:
     """
     schedule: {date_iso: {'lane_1': [...], ..., 'lane_8': [...]}}
     Returns PNG bytes ready to embed or serve.
@@ -89,7 +95,8 @@ def create_weekly_image(schedule: dict, week_start: date) -> bytes:
         day = week_start + timedelta(days=day_idx)
         grid = _build_day_grid(
             schedule.get(day.isoformat(), {}),
-            day.weekday(),
+            day,
+            closed_dates,
         )
 
         ax.pcolormesh(
@@ -99,7 +106,7 @@ def create_weekly_image(schedule: dict, week_start: date) -> bytes:
         )
 
         ax.set_xlim(0, N_LANES)
-        ax.set_ylim(N_SLOTS, 0)          # inverted: slot 0 at top = earliest time
+        ax.set_ylim(N_SLOTS, 0)
 
         # ── Column header ────────────────────────────────────────────────────
         ax.set_title(
@@ -117,6 +124,12 @@ def create_weekly_image(schedule: dict, week_start: date) -> bytes:
         for spine in ax.spines.values():
             spine.set_linewidth(0.5)
             spine.set_color("#aaaaaa")
+
+        if day.isoformat() in closed_dates:
+            ax.text(N_LANES / 2, N_SLOTS / 2, "CLOSED",
+                    ha="center", va="center", fontsize=7.5,
+                    color="#888888", fontweight="bold",
+                    rotation=90, transform=ax.transData)
 
     # ── Y axis (shared, left panel only) ────────────────────────────────────
     ax0 = axes[0]
@@ -151,6 +164,7 @@ def create_weekly_image(schedule: dict, week_start: date) -> bytes:
 
 
 def create_day_image(day_schedule: dict, day_date: date,
+                     closed_dates: set = frozenset(),
                      now_minutes: Optional[int] = None) -> bytes:
     """
     Render a single-day lane availability chart.
@@ -158,7 +172,7 @@ def create_day_image(day_schedule: dict, day_date: date,
     now_minutes: current time as minutes from midnight, for the "now" marker.
     Returns PNG bytes.
     """
-    grid = _build_day_grid(day_schedule, day_date.weekday())
+    grid = _build_day_grid(day_schedule, day_date, closed_dates)
 
     cmap = mcolors.ListedColormap([COLOR_AVAILABLE, COLOR_BLOCKED, COLOR_CLOSED])
     norm = mcolors.BoundaryNorm([0, 0.5, 1.5, 2.5], cmap.N)
@@ -170,6 +184,12 @@ def create_day_image(day_schedule: dict, day_date: date,
         cmap=cmap, norm=norm,
         edgecolors="white", linewidth=0.6,
     )
+
+    if day_date.isoformat() in closed_dates:
+        ax.text(N_LANES / 2, N_SLOTS / 2, "CLOSED",
+                ha="center", va="center", fontsize=28,
+                color="#999999", fontweight="bold", alpha=0.55,
+                transform=ax.transData)
 
     # ── Event name labels ────────────────────────────────────────────────────
     # Collect unique (slot_range, lane_col, name) blocks and label the centre.

@@ -27,8 +27,8 @@ def index():
     week_start = _week_start(ref)
     week_end   = week_start + timedelta(days=6)
 
-    schedule  = get_week_schedule(week_start)
-    img_bytes = create_weekly_image(schedule, week_start)
+    schedule, closed_dates = get_week_schedule(week_start)
+    img_bytes = create_weekly_image(schedule, week_start, closed_dates)
     img_b64   = base64.b64encode(img_bytes).decode("ascii")
 
     return render_template(
@@ -48,13 +48,15 @@ def today_view():
     today = datetime.now(ZoneInfo("America/New_York")).date()
     week_start = _week_start(today)
 
-    schedule   = get_week_schedule(week_start)
+    schedule, closed_dates = get_week_schedule(week_start)
     day_sched  = schedule.get(today.isoformat(), {})
 
     now = datetime.now(ZoneInfo("America/New_York"))
     now_minutes = now.hour * 60 + now.minute
 
-    img_bytes = create_day_image(day_sched, today, now_minutes=now_minutes)
+    img_bytes = create_day_image(day_sched, today,
+                                 closed_dates=closed_dates,
+                                 now_minutes=now_minutes)
     img_b64   = base64.b64encode(img_bytes).decode("ascii")
 
     return render_template(
